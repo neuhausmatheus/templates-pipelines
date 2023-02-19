@@ -30,7 +30,7 @@ service-containers.yml: A workflow that uses service containers to run a
 Spring Boot application.
 
 
-##Contributing
+## Contributing
 
 If you would like to contribute a new template, or improve an existing 
 one, please feel free to submit a pull request! We welcome contributions 
