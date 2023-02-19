@@ -14,21 +14,20 @@ your specific needs.
 ## Available Templates
 The following templates are currently available:
 
-build-test-deploy.yml: A workflow that builds, tests, and deploys a 
-project to a specified environment.
+argocd_gke_jmeter.yml: A workflow that builds, tests, and deploys a 
+project to GKE using ArgoCD and JMeter for continuous deployment testing. 
+We also have a automated roll back in case of failure.
 
-jmeter-test-deploy.yml: A workflow that tests an application using JMeter, 
-and deploys it if the tests pass.
+matrix_spring.yml: A workflow that build and test a spring boot using 
+matrix for multiple versions testing.
 
-triggered-build.yml: A workflow that triggers a build whenever a new 
-commit is pushed to the repository.
+service_containers_spring.yml: A workflow that spins up 2 service 
+containers to test an spring boot application integration against 
+ElasticSearch and CassandraDB.
 
-scheduled-build.yml: A workflow that runs on a schedule to perform various 
-tasks, such as backing up data or running automated tests.
-
-service-containers.yml: A workflow that uses service containers to run a 
-Spring Boot application.
-
+triggers_matrixes_concurrency_caching_service_containers.yml: A workflow 
+that uses all this features to deploy, test and maybe roll back a spring 
+boot application.
 
 ## Contributing
 
