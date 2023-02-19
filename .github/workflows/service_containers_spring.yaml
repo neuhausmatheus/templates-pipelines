@@ -1,0 +1,85 @@
+# This workflow has the following steps:
+
+# 1. Checkout code from the repository.
+# 2. Build the Spring Boot app using Maven.
+# 3. Start the app using the spring-boot:run goal and set the database configuration with environment variables.
+# 4. Wait for the app to start by checking its health endpoint using curl.
+# 5. Run JMeter tests against the app using the justb4/jmeter-github-action.
+# 6. Stop the app by killing its process using the lsof command.
+
+# The workflow also defines a service container for PostgreSQL, which is used as the app's database. 
+# The app's database configuration is set using environment variables. This workflow uses a wait loop to check 
+# if the app has started before running JMeter tests. If the app fails to start or if the JMeter tests fail, the workflow will fail.
+
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  SPRING_PROFILES_ACTIVE: test
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready -U postgres"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Build with Maven
+      run: mvn -B clean package
+
+    - name: Start the app
+      run: mvn -B spring-boot:run &
+      env:
+        SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/testdb
+        SPRING_DATASOURCE_USERNAME: postgres
+        SPRING_DATASOURCE_PASSWORD: postgres
+
+    - name: Wait for app to start
+      run: |
+        n=0
+        until [ $n -ge 10 ]
+        do
+          response=$(curl --write-out '%{http_code}' --silent --output /dev/null http://localhost:8080/health)
+          if [ $response -eq 200 ]
+          then
+            echo "App started successfully"
+            break
+          fi
+          echo "Waiting for app to start..."
+          n=$((n+1))
+          sleep 10
+        done
+        if [ $n -eq 10 ]
+        then
+          echo "App failed to start"
+          exit 1
+        fi
+
+    - name: Run JMeter tests
+      uses: justb4/jmeter-github-action@v1.4.0
+      with:
+        jmx_path: ./jmeter/test.jmx
+        jmeter_args: -Jhost=http://localhost:8080
+        jmeter_home: /opt/apache-jmeter-5.4.1
+
+    - name: Stop the app
+      run: |
+        pid=$(lsof -t -i:8080)
+        kill $pid

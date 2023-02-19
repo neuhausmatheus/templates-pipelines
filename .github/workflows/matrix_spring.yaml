@@ -1,0 +1,51 @@
+# This example defines two jobs: build and test.
+# The build job uses the matrix strategy to find .pom files in different subdirectories of the repository and build them with Maven.
+# The test job depends on the build job and uses the matrix strategy to test the .pom files with different versions of JDK. 
+# Both jobs use the actions/checkout@v2 action to check out the repository and the actions/setup-java@v1 action to set up the JDK.
+
+name: Maven Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        pom-file: [ 'pom.xml', 'subdirectory/pom.xml', 'other-subdirectory/pom.xml' ]
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up JDK 11
+      uses: actions/setup-java@v1
+      with:
+        java-version: 11
+
+    - name: Build with Maven
+      run: mvn -B package --file ${{ matrix.pom-file }}
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        pom-file: [ 'pom.xml', 'subdirectory/pom.xml', 'other-subdirectory/pom.xml' ]
+        jdk-version: [ '11', '14', '16' ]
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up JDK ${{ matrix.jdk-version }}
+      uses: actions/setup-java@v1
+      with:
+        java-version: ${{ matrix.jdk-version }}
+
+    - name: Test with Maven
+      run: mvn -B test --file ${{ matrix.pom-file }}

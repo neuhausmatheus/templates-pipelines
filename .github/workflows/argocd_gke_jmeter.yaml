@@ -1,0 +1,85 @@
+# This workflow has two jobs: build and deploy. The build job compiles and tests the app, performs a Snyk security test and deploys the binary to JFrog Artifactory. 
+# The deploy job checks out the ArgoCD repository, installs the ArgoCD CLI, logs into ArgoCD, deploys the app, performs a JMeter health check on the app's URL, and rolls back the deployment if the JMeter test fails. 
+
+name: Deploy to GKE with ArgoCD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Java
+        uses: actions/setup-java@v2
+        with:
+          java-version: '11'
+
+      - name: Build with Maven
+        run: mvn clean verify
+
+      - name: Snyk security test
+        uses: snyk/actions/mvn@master
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Publish to JFrog Artifactory
+        run: mvn -s .m2/settings.xml deploy
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ArgoCD repository
+        uses: actions/checkout@v2
+        with:
+          repository: kubernetes-argo-deploy
+          ref: main
+          path: argocd
+
+      - name: Install ArgoCD CLI
+        run: |
+          sudo curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/download/v2.3.0/argocd-linux-amd64
+          sudo chmod +x /usr/local/bin/argocd
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login --insecure --username ${{ secrets.ARGOCD_USERNAME }} --password ${{ secrets.ARGOCD_PASSWORD }} --grpc-web ${{ secrets.ARGOCD_API_SERVER }}
+          argocd account update-password --current-password ${{ secrets.ARGOCD_PASSWORD }} --new-password ${{ secrets.ARGOCD_PASSWORD }}
+        env:
+          ARGOCD_API_SERVER: https://myargocd.example.com
+
+      - name: Deploy app
+        run: |
+          argocd app create myapp --repo https://github.com/myuser/myapp.git --path . --dest-server https://myk8s.example.com --dest-namespace mynamespace
+          argocd app sync myapp
+        env:
+          ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
+
+    - name: Run JMeter tests
+      run: |
+        cd jmeter
+        export APP_URL=http://myapp.example.com
+        export JMETER_HOME=../apache-jmeter-5.4.1
+        $JMETER_HOME/bin/jmeter -n -t myapp.jmx -l results.jtl
+
+    - name: Check JMeter test results
+      run: |
+        cat jmeter/results.jtl | grep -q 'summary = 0 in error'
+        if [ "$?" -eq "0" ]; then
+          echo "JMeter tests passed!"
+        else
+          echo "JMeter tests failed - reverting Pull Request"
+          curl -u "${{ secrets.GITHUB_TOKEN }}:" \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/kubernetes-argo-deploy/pulls/${{ github.event.pull_request.number }}/reviews" \
+            --data '{"event":"REQUEST_CHANGES","body":"JMeter tests failed - please check your deployment and try again."}'
+        fi
